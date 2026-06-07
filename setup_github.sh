@@ -33,7 +33,7 @@ git init
 git config user.name "${GIT_AUTHOR_NAME:-$OWNER}"
 git config user.email "${GIT_AUTHOR_EMAIL:-$OWNER_ID+$OWNER@users.noreply.github.com}"
 
-git add .gitignore .env.example .nvmrc .python-version LICENSE
+git add .gitattributes .gitignore .env.example .nvmrc .python-version LICENSE
 git commit -m "chore: initialize repository metadata"
 
 git add infra/db/init.sql infra/policies/default-terminal-sandbox.yml packages/shared/contracts/run-request.schema.json
