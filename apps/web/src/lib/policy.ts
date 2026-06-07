@@ -1,0 +1,99 @@
+import crypto from "node:crypto";
+import yaml from "js-yaml";
+import { z } from "zod";
+
+export class PolicyValidationError extends Error {
+  constructor(
+    message: string,
+    public readonly details?: unknown
+  ) {
+    super(message);
+    this.name = "PolicyValidationError";
+  }
+}
+
+const PolicySchema = z.object({
+  policy_id: z.string().min(1).max(120).regex(/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/),
+  network: z.object({
+    allow: z.boolean()
+  }),
+  filesystem: z.object({
+    writable_paths: z.array(z.string().min(1).regex(/^\//)).default([])
+  }),
+  execution: z.object({
+    max_seconds: z.number().int().positive().max(900),
+    denied_commands: z.array(z.string().min(1).regex(/^[a-zA-Z0-9._-]+$/)).default([])
+  })
+});
+
+export type CompiledPolicy = {
+  id: string;
+  digest: string;
+  compiled: {
+    networkAllowed: boolean;
+    writablePathSet: string[];
+    maxSeconds: number;
+    deniedCommandSet: string[];
+    constraintTree: {
+      all: Array<Record<string, unknown>>;
+    };
+  };
+  admissionMs: number;
+};
+
+const evidenceCache = new Map<string, CompiledPolicy>();
+
+export function compilePolicy(sourceYaml: string): CompiledPolicy {
+  const started = performance.now();
+  let loaded: unknown;
+  try {
+    loaded = yaml.load(sourceYaml);
+  } catch (error) {
+    throw new PolicyValidationError("policy_yaml_parse_failed", error);
+  }
+
+  const policyResult = PolicySchema.safeParse(loaded);
+  if (!policyResult.success) {
+    throw new PolicyValidationError("policy_schema_validation_failed", policyResult.error.flatten());
+  }
+
+  const parsed = policyResult.data;
+  const digest = crypto.createHash("sha256").update(sourceYaml).digest("hex");
+  const cached = evidenceCache.get(digest);
+  if (cached) {
+    return { ...cached, admissionMs: Math.max(1, Math.round(performance.now() - started)) };
+  }
+
+  const deniedCommandSet = [...new Set(parsed.execution.denied_commands)].sort();
+  const writablePathSet = [...new Set(parsed.filesystem.writable_paths)].sort();
+  const compiled: CompiledPolicy = {
+    id: parsed.policy_id,
+    digest,
+    admissionMs: Math.max(1, Math.round(performance.now() - started)),
+    compiled: {
+      networkAllowed: parsed.network.allow,
+      writablePathSet,
+      maxSeconds: parsed.execution.max_seconds,
+      deniedCommandSet,
+      constraintTree: {
+        all: [
+          { network: { allow: parsed.network.allow } },
+          { filesystem: { writablePaths: writablePathSet } },
+          { execution: { maxSeconds: parsed.execution.max_seconds, deniedCommands: deniedCommandSet } }
+        ]
+      }
+    }
+  };
+
+  evidenceCache.set(digest, compiled);
+  return compiled;
+}
+
+export function validateCommandAgainstPolicy(command: string, policy: CompiledPolicy): string[] {
+  const commandTokens = command.split(/\s+/).map((token) => token.trim()).filter(Boolean);
+  return policy.compiled.deniedCommandSet.filter((denied) => commandTokens.includes(denied));
+}
+
+export function clearEvidenceCacheForTests(): void {
+  evidenceCache.clear();
+}
