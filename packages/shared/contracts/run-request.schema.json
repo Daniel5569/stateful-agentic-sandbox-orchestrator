@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "RunRequest",
+  "type": "object",
+  "required": ["agentId", "command", "workspaceRef", "policyYaml"],
+  "properties": {
+    "agentId": { "type": "string", "minLength": 1 },
+    "command": { "type": "string", "minLength": 1 },
+    "workspaceRef": { "type": "string", "minLength": 1 },
+    "policyYaml": { "type": "string", "minLength": 1 }
+  },
+  "additionalProperties": false
+}
+

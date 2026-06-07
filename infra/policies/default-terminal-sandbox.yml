@@ -1,0 +1,16 @@
+policy_id: default-terminal-sandbox
+network:
+  allow: false
+filesystem:
+  writable_paths:
+    - /workspace
+execution:
+  max_seconds: 45
+  denied_commands:
+    - curl
+    - wget
+    - nc
+    - ncat
+    - ssh
+    - scp
+
