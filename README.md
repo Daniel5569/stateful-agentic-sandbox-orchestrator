@@ -226,6 +226,8 @@ Python engine:
 cd services/engine
 python -m pip install -e ".[dev]"
 python -m pytest
+python -m ruff check .
+python -m black --check .
 ```
 
 Full integration in GitHub Actions runs with real PostgreSQL and Redis service containers by setting `RUN_DB_INTEGRATION=1`.
@@ -235,12 +237,12 @@ Full integration in GitHub Actions runs with real PostgreSQL and Redis service c
 The repository includes `.github/workflows/ci.yml` with two jobs:
 
 - **Node gateway:** install, audit, unit tests, database/Redis integration test, Next.js build.
-- **Python engine:** install FastAPI engine dependencies and run Pytest.
+- **Python engine:** install FastAPI engine dependencies, run Pytest, lint with Ruff, and check formatting with Black.
 
 
-## Repository Narrative for Recruiters
+## Context
 
-This case study demonstrates infrastructure judgment:
+This system demonstrates the infrastructure boundaries needed for long-running agent execution:
 
 - long-running work is not forced through synchronous HTTP,
 - policy is compiled before execution,
@@ -249,4 +251,4 @@ This case study demonstrates infrastructure judgment:
 - execution evidence is persisted for debugging and security review,
 - all local services are reproducible through containers.
 
-The code is intentionally readable because early-stage teams value engineers who can both build systems and explain them under pressure.
+The code is intentionally readable so the admission, policy, execution, and evidence paths can be reviewed directly.

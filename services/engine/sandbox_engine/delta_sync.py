@@ -50,12 +50,17 @@ def resolve_workspace(root: Path, workspace_ref: str) -> Path:
 
     resolved_root = root.resolve()
     resolved_workspace = (root / workspace_ref).resolve()
-    if resolved_workspace != resolved_root and resolved_root not in resolved_workspace.parents:
+    if (
+        resolved_workspace != resolved_root
+        and resolved_root not in resolved_workspace.parents
+    ):
         raise ValueError("workspace_ref_escapes_storage_root")
     return resolved_workspace
 
 
-def hydrate_delta(object_store_root: Path, workspace_root: Path, workspace_ref: str) -> DeltaResult:
+def hydrate_delta(
+    object_store_root: Path, workspace_root: Path, workspace_ref: str
+) -> DeltaResult:
     source_root = resolve_workspace(object_store_root, workspace_ref)
     target_root = resolve_workspace(workspace_root, workspace_ref)
     source_manifest = build_manifest(source_root)
@@ -88,5 +93,7 @@ def hydrate_delta(object_store_root: Path, workspace_root: Path, workspace_ref: 
             candidate.unlink()
 
     result = DeltaResult(sorted(added), sorted(changed), deleted, sorted(unchanged))
-    (target_root / INTERNAL_MANIFEST).write_text(json.dumps(result.as_dict(), indent=2), encoding="utf-8")
+    (target_root / INTERNAL_MANIFEST).write_text(
+        json.dumps(result.as_dict(), indent=2), encoding="utf-8"
+    )
     return result

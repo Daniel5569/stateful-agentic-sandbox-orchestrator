@@ -10,7 +10,6 @@ from .db import database
 from .delta_sync import hydrate_delta
 from .sandbox_runner import run_sandboxed
 
-
 STREAM_KEY = "sandbox-runs"
 CONSUMER_GROUP = "sandbox-engine"
 CONSUMER_NAME = "engine-1"
@@ -27,13 +26,17 @@ async def process_job(payload: dict[str, Any]) -> None:
 
     await database.set_run_status(run_id, "running")
     try:
-        await database.add_event(run_id, "engine.started", {"workspaceRef": workspace_ref})
+        await database.add_event(
+            run_id, "engine.started", {"workspaceRef": workspace_ref}
+        )
 
         delta = hydrate_delta(object_store_root, workspace_root, workspace_ref)
         await database.add_event(run_id, "workspace.delta_applied", delta.as_dict())
 
         result = await run_sandboxed(command, workspace_root / workspace_ref)
-        final_status = "completed" if result.exit_code == 0 and not result.timed_out else "failed"
+        final_status = (
+            "completed" if result.exit_code == 0 and not result.timed_out else "failed"
+        )
 
         await database.add_event(
             run_id,

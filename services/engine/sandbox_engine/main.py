@@ -27,9 +27,13 @@ async def health() -> dict[str, str]:
 
 
 def main() -> None:
-    uvicorn.run("sandbox_engine.main:app", host="0.0.0.0", port=settings.engine_port, reload=False)
+    uvicorn.run(
+        "sandbox_engine.main:app",
+        host="0.0.0.0",
+        port=settings.engine_port,
+        reload=False,
+    )
 
 
 if __name__ == "__main__":
     main()
-

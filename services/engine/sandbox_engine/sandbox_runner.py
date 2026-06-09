@@ -14,7 +14,9 @@ class SandboxResult:
     timed_out: bool
 
 
-async def run_sandboxed(command: str, workspace: Path, timeout_seconds: int = 45) -> SandboxResult:
+async def run_sandboxed(
+    command: str, workspace: Path, timeout_seconds: int = 45
+) -> SandboxResult:
     started = time.perf_counter()
     process = await asyncio.create_subprocess_exec(
         *shlex.split(command),
@@ -24,7 +26,9 @@ async def run_sandboxed(command: str, workspace: Path, timeout_seconds: int = 45
     )
 
     try:
-        stdout_bytes, stderr_bytes = await asyncio.wait_for(process.communicate(), timeout=timeout_seconds)
+        stdout_bytes, stderr_bytes = await asyncio.wait_for(
+            process.communicate(), timeout=timeout_seconds
+        )
         timed_out = False
     except asyncio.TimeoutError:
         process.kill()
@@ -39,4 +43,3 @@ async def run_sandboxed(command: str, workspace: Path, timeout_seconds: int = 45
         duration_ms=duration_ms,
         timed_out=timed_out,
     )
-

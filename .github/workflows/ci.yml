@@ -88,3 +88,9 @@ jobs:
 
       - name: Test engine
         run: python -m pytest
+
+      - name: Lint engine
+        run: python -m ruff check .
+
+      - name: Check engine formatting
+        run: python -m black --check .

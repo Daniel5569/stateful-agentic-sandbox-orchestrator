@@ -51,15 +51,21 @@ class FakeDatabase:
         self.statuses: list[tuple[str, str, dict[str, Any] | None]] = []
         self.events: list[tuple[str, str, dict[str, Any]]] = []
 
-    async def set_run_status(self, run_id: str, status: str, delta: dict[str, Any] | None = None) -> None:
+    async def set_run_status(
+        self, run_id: str, status: str, delta: dict[str, Any] | None = None
+    ) -> None:
         self.statuses.append((run_id, status, delta))
 
-    async def add_event(self, run_id: str, event_type: str, payload: dict[str, Any]) -> None:
+    async def add_event(
+        self, run_id: str, event_type: str, payload: dict[str, Any]
+    ) -> None:
         self.events.append((run_id, event_type, payload))
 
 
 @pytest.mark.asyncio
-async def test_process_job_hydrates_workspace_and_writes_events(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_process_job_hydrates_workspace_and_writes_events(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     object_store = tmp_path / "object-store" / "demo"
     object_store.mkdir(parents=True)
     (object_store / "task.py").write_text("print(42)", encoding="utf-8")
@@ -71,7 +77,9 @@ async def test_process_job_hydrates_workspace_and_writes_events(tmp_path: Path, 
     async def fake_runner(command: str, workspace: Path) -> SandboxResult:
         assert command == "python task.py"
         assert (workspace / "task.py").exists()
-        return SandboxResult(exit_code=0, stdout="42", stderr="", duration_ms=12, timed_out=False)
+        return SandboxResult(
+            exit_code=0, stdout="42", stderr="", duration_ms=12, timed_out=False
+        )
 
     monkeypatch.setattr(worker, "run_sandboxed", fake_runner)
 
@@ -87,7 +95,11 @@ async def test_process_job_hydrates_workspace_and_writes_events(tmp_path: Path, 
 
     assert fake_database.statuses[0] == ("run-1", "running", None)
     assert fake_database.statuses[-1][1] == "completed"
-    assert ("run-1", "workspace.delta_applied", {"added": ["task.py"], "changed": [], "deleted": [], "unchanged": []}) in fake_database.events
+    assert (
+        "run-1",
+        "workspace.delta_applied",
+        {"added": ["task.py"], "changed": [], "deleted": [], "unchanged": []},
+    ) in fake_database.events
 
 
 @pytest.mark.asyncio
@@ -109,4 +121,6 @@ async def test_process_job_marks_run_failed_when_workspace_ref_is_invalid(
     )
 
     assert fake_database.statuses[-1] == ("run-1", "failed", None)
-    assert any(event_type == "engine.failed" for _, event_type, _ in fake_database.events)
+    assert any(
+        event_type == "engine.failed" for _, event_type, _ in fake_database.events
+    )
