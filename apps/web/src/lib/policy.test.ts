@@ -40,6 +40,50 @@ describe("policy compiler", () => {
     expect(validateCommandAgainstPolicy("python secure_curl_wrapper.py", policy)).toEqual([]);
   });
 
+  it("detects quoted and absolute-path denied commands", () => {
+    const policy = compilePolicy(policyYaml);
+
+    expect(validateCommandAgainstPolicy("'curl' https://example.com", policy)).toEqual(["curl"]);
+    expect(validateCommandAgainstPolicy("/usr/bin/curl https://example.com", policy)).toEqual(["curl"]);
+  });
+
+  it("detects denied commands launched through shell wrappers", () => {
+    const policy = compilePolicy(policyYaml);
+
+    expect(validateCommandAgainstPolicy("bash -lc \"curl https://example.com\"", policy)).toEqual(["curl"]);
+  });
+
+  it("flags shell metacharacters that can hide command chaining", () => {
+    const policy = compilePolicy(policyYaml);
+
+    expect(validateCommandAgainstPolicy("python task.py; curl https://example.com", policy)).toEqual([
+      "curl",
+      "shell_metacharacter"
+    ]);
+    expect(validateCommandAgainstPolicy("python task.py $(curl https://example.com)", policy)).toEqual([
+      "curl",
+      "shell_metacharacter"
+    ]);
+    expect(validateCommandAgainstPolicy("python task.py > /tmp/out", policy)).toEqual(["shell_metacharacter"]);
+  });
+
+  it("flags common Python network and encoded payload bypasses", () => {
+    const policy = compilePolicy(policyYaml);
+
+    expect(validateCommandAgainstPolicy("python -c \"import requests; requests.get('https://e.com')\"", policy)).toEqual([
+      "python_network_import"
+    ]);
+    expect(validateCommandAgainstPolicy("python -c \"import base64; exec(base64.b64decode('cHJpbnQoMSk='))\"", policy)).toEqual([
+      "python_encoded_payload"
+    ]);
+  });
+
+  it("detects nc through env/path-style launchers", () => {
+    const policy = compilePolicy(policyYaml.replace("    - ssh", "    - ssh\n    - nc"));
+
+    expect(validateCommandAgainstPolicy("PATH=/tmp:$PATH env /bin/nc 127.0.0.1 80", policy)).toEqual(["nc"]);
+  });
+
   it("deduplicates and sorts command and path constraints", () => {
     const policy = compilePolicy(`
 policy_id: sorted-policy

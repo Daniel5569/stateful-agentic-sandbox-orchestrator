@@ -62,6 +62,51 @@ class FakeDatabase:
         self.events.append((run_id, event_type, payload))
 
 
+class FakeRedis:
+    def __init__(self) -> None:
+        self.acked: list[tuple[str, str, str]] = []
+        self.dead_letters: list[tuple[str, dict[str, str]]] = []
+        self.pending_entries: list[object] = []
+        self.claimed_messages: list[tuple[str, dict[str, str]]] = []
+        self.xclaim_calls: list[dict[str, object]] = []
+
+    async def xack(self, stream: str, group: str, message_id: str) -> None:
+        self.acked.append((stream, group, message_id))
+
+    async def xadd(self, stream: str, fields: dict[str, str]) -> None:
+        self.dead_letters.append((stream, fields))
+
+    async def xpending_range(
+        self,
+        stream: str,
+        group: str,
+        min: str,
+        max: str,
+        count: int,
+        idle: int,
+    ) -> list[object]:
+        return self.pending_entries
+
+    async def xclaim(
+        self,
+        stream: str,
+        group: str,
+        consumer: str,
+        min_idle_time: int,
+        message_ids: list[str],
+    ) -> list[tuple[str, dict[str, str]]]:
+        self.xclaim_calls.append(
+            {
+                "stream": stream,
+                "group": group,
+                "consumer": consumer,
+                "min_idle_time": min_idle_time,
+                "message_ids": message_ids,
+            }
+        )
+        return self.claimed_messages
+
+
 @pytest.mark.asyncio
 async def test_process_job_hydrates_workspace_and_writes_events(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -124,3 +169,43 @@ async def test_process_job_marks_run_failed_when_workspace_ref_is_invalid(
     assert any(
         event_type == "engine.failed" for _, event_type, _ in fake_database.events
     )
+
+
+@pytest.mark.asyncio
+async def test_handle_message_dead_letters_invalid_payload() -> None:
+    redis = FakeRedis()
+
+    await worker.handle_message(redis, "1-0", {"payload": "not-json"})
+
+    assert redis.acked == [(worker.STREAM_KEY, worker.CONSUMER_GROUP, "1-0")]
+    assert redis.dead_letters[0][0] == worker.DEAD_LETTER_STREAM
+    assert redis.dead_letters[0][1]["reason"] == "invalid_payload"
+
+
+@pytest.mark.asyncio
+async def test_reclaim_stale_pending_claims_and_processes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    redis = FakeRedis()
+    redis.pending_entries = [{"message_id": "2-0"}]
+    redis.claimed_messages = [
+        (
+            "2-0",
+            {
+                "payload": '{"runId":"run-1","agentId":"agent","command":"python task.py","workspaceRef":"demo","policyId":"policy"}'
+            },
+        )
+    ]
+    processed: list[dict[str, str]] = []
+
+    async def fake_process_job(payload: dict[str, str]) -> None:
+        processed.append(payload)
+
+    monkeypatch.setattr(worker, "process_job", fake_process_job)
+
+    reclaimed = await worker.reclaim_stale_pending(redis, min_idle_ms=123, count=1)
+
+    assert reclaimed == 1
+    assert redis.xclaim_calls[0]["message_ids"] == ["2-0"]
+    assert processed[0]["runId"] == "run-1"
+    assert redis.acked == [(worker.STREAM_KEY, worker.CONSUMER_GROUP, "2-0")]

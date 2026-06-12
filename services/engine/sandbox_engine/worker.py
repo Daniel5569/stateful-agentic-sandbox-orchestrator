@@ -11,6 +11,7 @@ from .delta_sync import hydrate_delta
 from .sandbox_runner import run_sandboxed
 
 STREAM_KEY = "sandbox-runs"
+DEAD_LETTER_STREAM = "sandbox-runs-dead-letter"
 CONSUMER_GROUP = "sandbox-engine"
 CONSUMER_NAME = "engine-1"
 
@@ -106,13 +107,69 @@ async def consume_once(redis: Redis) -> bool:
 
     for _, messages in response:
         for message_id, fields in messages:
-            payload = parse_stream_payload(fields)
-            if payload is None:
-                await redis.xack(STREAM_KEY, CONSUMER_GROUP, message_id)
-                continue
-            await process_job(payload)
-            await redis.xack(STREAM_KEY, CONSUMER_GROUP, message_id)
+            await handle_message(redis, str(_decode(message_id)), fields)
     return True
+
+
+async def dead_letter(
+    redis: Redis, message_id: str, fields: dict[Any, Any], reason: str
+) -> None:
+    await redis.xadd(
+        DEAD_LETTER_STREAM,
+        {
+            "sourceMessageId": message_id,
+            "reason": reason,
+            "payload": json.dumps(
+                {_decode(key): _decode(value) for key, value in fields.items()}
+            ),
+        },
+    )
+
+
+async def handle_message(redis: Redis, message_id: str, fields: dict[Any, Any]) -> None:
+    payload = parse_stream_payload(fields)
+    if payload is None:
+        await dead_letter(redis, message_id, fields, "invalid_payload")
+        await redis.xack(STREAM_KEY, CONSUMER_GROUP, message_id)
+        return
+
+    await process_job(payload)
+    await redis.xack(STREAM_KEY, CONSUMER_GROUP, message_id)
+
+
+def _pending_message_id(entry: Any) -> str:
+    if isinstance(entry, dict):
+        return str(_decode(entry["message_id"]))
+    return str(_decode(entry[0]))
+
+
+async def reclaim_stale_pending(
+    redis: Redis,
+    min_idle_ms: int = settings.pending_message_idle_ms,
+    count: int = 10,
+) -> int:
+    pending = await redis.xpending_range(
+        STREAM_KEY,
+        CONSUMER_GROUP,
+        min="-",
+        max="+",
+        count=count,
+        idle=min_idle_ms,
+    )
+    message_ids = [_pending_message_id(entry) for entry in pending]
+    if not message_ids:
+        return 0
+
+    claimed = await redis.xclaim(
+        STREAM_KEY,
+        CONSUMER_GROUP,
+        CONSUMER_NAME,
+        min_idle_time=min_idle_ms,
+        message_ids=message_ids,
+    )
+    for message_id, fields in claimed:
+        await handle_message(redis, str(_decode(message_id)), fields)
+    return len(claimed)
 
 
 async def worker_loop() -> None:
@@ -120,6 +177,8 @@ async def worker_loop() -> None:
     try:
         await ensure_consumer_group(redis)
         while True:
-            await consume_once(redis)
+            consumed = await consume_once(redis)
+            if not consumed:
+                await reclaim_stale_pending(redis)
     finally:
         await redis.aclose()

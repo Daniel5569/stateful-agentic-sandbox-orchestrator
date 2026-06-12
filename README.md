@@ -210,6 +210,12 @@ curl -X POST http://localhost:3000/api/runs \
 
 ## Testing
 
+Whole-repo check:
+
+```bash
+npm run check
+```
+
 Node gateway:
 
 ```bash
@@ -231,6 +237,17 @@ python -m black --check .
 ```
 
 Full integration in GitHub Actions runs with real PostgreSQL and Redis service containers by setting `RUN_DB_INTEGRATION=1`.
+
+## Production Safety
+
+Local `.env` files are ignored; commit only `.env.example`. The gateway and engine allow `change-me-in-production` defaults only when `APP_ENV=development` or `ALLOW_INSECURE_DEV_DEFAULTS=1` is set. In production runtime, missing `DATABASE_URL`/`REDIS_URL` or default credentials fail closed.
+
+Invalid Redis Stream payloads are written to `sandbox-runs-dead-letter`, and stale pending entries are reclaimed with `XCLAIM` after `PENDING_MESSAGE_IDLE_MS`.
+
+## What Is Real Vs Demo
+
+- Real: async admission API, PostgreSQL state, Redis Streams, worker status transitions, delta workspace hydration, policy parsing, dead-letter handling, and CI tests.
+- Demo-shaped: the portable runner is not a hardened isolation boundary. Production should plug in Docker namespace isolation, gVisor, Firecracker, Bubblewrap, or a remote sandbox provider depending on threat model.
 
 ## CI/CD
 

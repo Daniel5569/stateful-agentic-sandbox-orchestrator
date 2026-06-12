@@ -90,8 +90,74 @@ export function compilePolicy(sourceYaml: string): CompiledPolicy {
 }
 
 export function validateCommandAgainstPolicy(command: string, policy: CompiledPolicy): string[] {
-  const commandTokens = command.split(/\s+/).map((token) => token.trim()).filter(Boolean);
-  return policy.compiled.deniedCommandSet.filter((denied) => commandTokens.includes(denied));
+  const candidates = extractCommandCandidates(command);
+  const findings = policy.compiled.deniedCommandSet.filter((denied) => candidates.has(denied.toLowerCase()));
+
+  if (hasShellMetacharacterOutsideQuotes(command)) {
+    findings.push("shell_metacharacter");
+  }
+
+  if (/\bpython(?:3)?\b[\s\S]*\b(?:import|from)\s+(?:requests|urllib|socket|http\.client)\b/i.test(command)) {
+    findings.push("python_network_import");
+  }
+
+  if (/\bpython(?:3)?\b[\s\S]*(?:base64|b64decode|exec\s*\()/i.test(command)) {
+    findings.push("python_encoded_payload");
+  }
+
+  return [...new Set(findings)];
+}
+
+function extractCommandCandidates(command: string): Set<string> {
+  const candidates = new Set<string>();
+  const roughTokens =
+    command
+      .replace(/["'\\]/g, " ")
+      .replace(/[;&|<>(){}[\]`$]/g, " ")
+      .match(/[A-Za-z0-9_./:-]+/g) ?? [];
+
+  for (const token of roughTokens) {
+    const normalized = token.toLowerCase().replace(/^env:/, "");
+    const basename = normalized.split(/[\\/]/).pop() ?? normalized;
+    const withoutWindowsExtension = basename.replace(/\.(?:exe|cmd|bat|ps1|sh)$/i, "");
+    candidates.add(normalized);
+    candidates.add(basename);
+    candidates.add(withoutWindowsExtension);
+  }
+
+  return candidates;
+}
+
+function hasShellMetacharacterOutsideQuotes(command: string): boolean {
+  let quote: "'" | "\"" | null = null;
+  let escaped = false;
+
+  for (let index = 0; index < command.length; index += 1) {
+    const char = command[index];
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (char === "\\") {
+      escaped = true;
+      continue;
+    }
+    if (quote) {
+      if (char === quote) {
+        quote = null;
+      }
+      continue;
+    }
+    if (char === "'" || char === "\"") {
+      quote = char;
+      continue;
+    }
+    if (";&|<>`".includes(char) || (char === "$" && command[index + 1] === "(")) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 export function clearEvidenceCacheForTests(): void {

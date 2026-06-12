@@ -1,0 +1,15 @@
+{
+  "name": "stateful-agentic-sandbox-orchestrator",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "test": "npm --prefix apps/web test && cd services/engine && python -m pytest",
+    "test:integration": "node scripts/run-web-integration.mjs src/app/api/runs/route.integration.test.ts",
+    "build": "npm --prefix apps/web run build",
+    "audit": "npm --prefix apps/web run audit",
+    "lint:python": "cd services/engine && python -m ruff check .",
+    "format:python": "cd services/engine && python -m black --check .",
+    "check:artifacts": "python scripts/check_generated_artifacts.py",
+    "check": "npm run check:artifacts && npm run audit && npm run test && npm run build && npm run lint:python && npm run format:python"
+  }
+}
