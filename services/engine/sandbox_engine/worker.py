@@ -8,11 +8,11 @@ from redis.exceptions import ResponseError
 from redis.asyncio import Redis
 
 from .config import settings
-
-logger = logging.getLogger(__name__)
 from .db import database
 from .delta_sync import hydrate_delta
 from .sandbox_runner import run_sandboxed
+
+logger = logging.getLogger(__name__)
 
 STREAM_KEY = "sandbox-runs"
 DEAD_LETTER_STREAM = "sandbox-runs-dead-letter"
