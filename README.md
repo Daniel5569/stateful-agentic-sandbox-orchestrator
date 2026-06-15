@@ -7,7 +7,7 @@
 
 Production-shaped portfolio case study for early-stage AI infrastructure teams building terminal-use agents, remote sandboxes, and long-running asynchronous execution systems.
 
-This monorepo demonstrates a bicephalous Node.js + Python architecture:
+This monorepo demonstrates a split Node.js + Python architecture:
 
 - **Node.js / Next.js** owns the product surface, API gateway, policy validation, and queue admission control.
 - **Python / FastAPI** owns the computational runtime, sandbox lifecycle simulation, delta-based workspace hydration, and execution telemetry.
@@ -19,7 +19,7 @@ The project is intentionally built as a public proof of work: it is small enough
 
 ## Why This Exists
 
-Terminal-use and code-executing agents fail in production when infrastructure teams treat them like normal request/response web apps. The hard problems are not only prompt quality. They are:
+Terminal-use and code-executing agents fail in production when infrastructure teams treat them like normal request/response web apps. The hard problems go beyond prompt quality. They are:
 
 - keeping execution state warm without trusting local disk,
 - enforcing deterministic policy decisions before runtime execution,
@@ -173,6 +173,26 @@ Production extensions:
 - Docker Engine `>=24`
 - Docker Compose v2
 
+## Quick Start
+
+```bash
+cp .env.example .env
+docker compose up --build -d   # all four services; web on :3000
+
+# Submit a run and poll to completion
+curl -X POST http://localhost:3000/api/runs \
+  -H "content-type: application/json" \
+  -d '{
+    "agentId": "portfolio-agent",
+    "command": "python -c \"print(42)\"",
+    "workspaceRef": "demo-workspace",
+    "policyYaml": "policy_id: default-terminal-sandbox\nnetwork:\n  allow: false\nfilesystem:\n  writable_paths:\n    - /workspace\nexecution:\n  max_seconds: 20\n  denied_commands:\n    - curl\n    - nc\n"
+  }'
+
+# Replace <runId> with the id returned above
+curl http://localhost:3000/api/runs/<runId>
+```
+
 ## Local Development
 
 ```bash
@@ -192,19 +212,6 @@ Inspect the internal engine health endpoint:
 
 ```bash
 docker compose exec engine python -c "import urllib.request; print(urllib.request.urlopen('http://localhost:8000/health').read().decode())"
-```
-
-Submit a run:
-
-```bash
-curl -X POST http://localhost:3000/api/runs \
-  -H "content-type: application/json" \
-  -d '{
-    "agentId": "portfolio-agent",
-    "command": "python -c \"print(42)\"",
-    "workspaceRef": "demo-workspace",
-    "policyYaml": "policy_id: default-terminal-sandbox\nnetwork:\n  allow: false\nfilesystem:\n  writable_paths:\n    - /workspace\nexecution:\n  max_seconds: 20\n  denied_commands:\n    - curl\n    - nc\n"
-  }'
 ```
 
 ## Testing
@@ -247,6 +254,7 @@ Invalid Redis Stream payloads are written to `sandbox-runs-dead-letter`, and sta
 
 - Real: async admission API, PostgreSQL state, Redis Streams, worker status transitions, delta workspace hydration, policy parsing, dead-letter handling, and CI tests.
 - Demo-shaped: the portable runner is not a hardened isolation boundary. Production should plug in Docker namespace isolation, gVisor, Firecracker, Bubblewrap, or a remote sandbox provider depending on threat model.
+- UI only: the homepage is a local policy-preview simulator — the "Submit demo run" button updates UI state only and does not call the API. Real end-to-end requests go through `POST /api/runs` as shown in the curl examples above.
 
 ## CI/CD
 
@@ -254,17 +262,3 @@ The repository includes `.github/workflows/ci.yml` with two jobs:
 
 - **Node gateway:** install, audit, unit tests, database/Redis integration test, Next.js build.
 - **Python engine:** install FastAPI engine dependencies, run Pytest, lint with Ruff, and check formatting with Black.
-
-
-## Context
-
-This system demonstrates the infrastructure boundaries needed for long-running agent execution:
-
-- long-running work is not forced through synchronous HTTP,
-- policy is compiled before execution,
-- the computational engine is isolated from the product gateway,
-- storage hydration is incremental,
-- execution evidence is persisted for debugging and security review,
-- all local services are reproducible through containers.
-
-The code is intentionally readable so the admission, policy, execution, and evidence paths can be reviewed directly.
