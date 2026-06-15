@@ -1,4 +1,6 @@
+import asyncio
 import json
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -6,6 +8,8 @@ from redis.exceptions import ResponseError
 from redis.asyncio import Redis
 
 from .config import settings
+
+logger = logging.getLogger(__name__)
 from .db import database
 from .delta_sync import hydrate_delta
 from .sandbox_runner import run_sandboxed
@@ -173,12 +177,21 @@ async def reclaim_stale_pending(
 
 
 async def worker_loop() -> None:
-    redis = Redis.from_url(settings.redis_url, decode_responses=True)
+    redis = Redis.from_url(
+        settings.redis_url,
+        decode_responses=True,
+        socket_timeout=10,
+        socket_connect_timeout=5,
+    )
     try:
         await ensure_consumer_group(redis)
         while True:
-            consumed = await consume_once(redis)
-            if not consumed:
-                await reclaim_stale_pending(redis)
+            try:
+                consumed = await consume_once(redis)
+                if not consumed:
+                    await reclaim_stale_pending(redis)
+            except Exception:
+                logger.exception("worker loop error; retrying in 1s")
+                await asyncio.sleep(1)
     finally:
         await redis.aclose()

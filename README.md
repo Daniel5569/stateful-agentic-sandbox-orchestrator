@@ -172,7 +172,6 @@ Production extensions:
 - Python `>=3.11`, developed with `3.12` (`.python-version` is included)
 - Docker Engine `>=24`
 - Docker Compose v2
-- GitHub CLI `gh` for publication automation
 
 ## Local Development
 
