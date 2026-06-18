@@ -277,3 +277,25 @@ The repository includes `.github/workflows/ci.yml` with two jobs:
 
 - **Node gateway:** install, audit, unit tests, database/Redis integration test, Next.js build.
 - **Python engine:** install FastAPI engine dependencies, run Pytest, lint with Ruff, and check formatting with Black.
+
+
+## Architecture Decisions
+
+**Why Redis Streams instead of RabbitMQ or SQS?**
+Redis Streams provide consumer-group semantics and a Pending Entry List (PEL) without an external service. XCLAIM-based recovery is deterministic and testable in CI with a real Redis container. The Stream event schema is an explicit contract that can be replaced by SQS or RabbitMQ behind the same interface without touching the gateway or the engine.
+
+**Why split Node.js gateway + Python engine instead of a single language?**
+Production AI companies running Python ML workloads rarely want to rewrite model-side code in TypeScript. The split enforces an explicit Redis Stream contract rather than a shared-memory assumption, and demonstrates the cross-runtime boundary that most agentic infrastructure teams actually operate. Next.js owns the product surface and admission control; Python owns computational execution.
+
+**What happens to failed or orphaned jobs?**
+Failed jobs emit a structured rror execution event to PostgreSQL before the worker exits. Messages that remain in the Redis PENDING state beyond PENDING_MESSAGE_IDLE_MS are reclaimed with XCLAIM and retried up to a configurable limit. After exhausting retries they are written to sandbox-runs-dead-letter for operator inspection — the same pattern used by production stream processors.
+
+**How does delta workspace hydration work?**
+Instead of copying a full base image on every run, the engine computes a content-addressed delta against the previous workspace snapshot. Only changed files are applied. This avoids write amplification in long-running agentic sessions where an agent makes many incremental edits across a workspace it partially owns.
+
+**Why does the UI Submit button not call the live API?**
+The homepage is a policy-preview simulator for reviewers who want to inspect the system without running the stack. Real end-to-end requests go through POST /api/runs (curl examples in Quick Start). The split is explicit in the component: demo state lives in React state; the real API path is in the route handler. Both are inspectable in the same codebase.
+
+**Why is the Python sandbox engine not a hardened isolation boundary?**
+Portable isolation (gVisor, Firecracker, Bubblewrap, Docker namespaces) is infrastructure-provider-dependent. The engine demonstrates the control-plane contract — policy admission, XCLAIM recovery, execution telemetry — rather than a specific isolation backend. Swapping in a production sandbox provider is a one-file change to the engine entrypoint.
+
