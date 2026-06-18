@@ -47,7 +47,6 @@ This system addresses those problems with an asynchronous split between a gatewa
 
 ## Demo
 
-![Run lifecycle demo](docs/demo.gif)
 
 The demo shows the intended operator flow: submit a run, receive `202 Accepted`, poll the run state, then inspect persisted execution events after the Python engine finishes the sandbox job.
 
