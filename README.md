@@ -7,6 +7,21 @@
 
 Production-shaped portfolio case study for early-stage AI infrastructure teams building terminal-use agents, remote sandboxes, and long-running asynchronous execution systems.
 
+> **Reviewing this repo?** Clone and run `docker compose up --build -d` — the full stack (Next.js gateway, Python engine, Redis, PostgreSQL) is running in under 2 minutes. Then `curl -X POST http://localhost:3000/api/runs ...` (see [Quick Start](#quick-start)) to submit a run and watch the Python engine process it through Redis Streams. No external accounts required.
+
+## Business Problem
+
+Code-executing agents are one of the fastest-growing infrastructure categories in AI. Every serious AI company building a coding assistant, data analyst, or automation agent needs the same underlying infrastructure: a gateway that enforces policy before execution, a runtime that isolates agents from the host, a queue that decouples admission from long-running jobs, and an audit trail that makes unsafe behavior debuggable after the fact.
+
+None of this is solved by better prompts. It is solved by control-plane architecture — and that is what this repo demonstrates.
+
+**Specific problems this system addresses:**
+
+- A serverless function times out at 30 seconds; a code agent needs minutes → decouple via Redis Streams, return `202 Accepted` immediately
+- An agent writes to the wrong file and corrupts shared state → delta-based workspace hydration, per-job isolated directories
+- A policy check runs after execution, not before → compile YAML policies into deterministic constraint trees at admission time
+- A failed sandbox leaves state in an unknown condition → structured execution events, inspectable after failure, stale messages recovered via XCLAIM
+
 This monorepo demonstrates a split Node.js + Python architecture:
 
 - **Node.js / Next.js** owns the product surface, API gateway, policy validation, and queue admission control.
